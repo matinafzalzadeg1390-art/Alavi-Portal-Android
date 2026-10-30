@@ -4,14 +4,12 @@ name: Build Alavi Android APK
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches:
+      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
 
     steps:
       - name: Checkout
@@ -23,25 +21,34 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Accept Android Licenses
+      - name: Locate Android SDK
+        shell: bash
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager --licenses || true
+          set -eux
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          SDKMANAGER=$(find "${ANDROID_HOME:-$ANDROID_SDK_ROOT}/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found"
+            exit 1
+          fi
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
 
-      - name: Install Android SDK Packages
+      - name: Accept Licenses and Install SDK
+        shell: bash
         run: |
-          $ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager \
-            "platform-tools" \
-            "platforms;android-35" \
-            "build-tools;35.0.0"
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
+          set -eux
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Create Android Project
+        shell: bash
         run: |
+          set -eux
           mkdir -p Alavi/app/src/main/java/com/alavi/portal
+
+          echo "sdk.dir=$ANDROID_HOME" > Alavi/local.properties
 
           cat > Alavi/settings.gradle <<'EOF'
           pluginManagement {
@@ -118,7 +125,6 @@ jobs:
               @Override
               protected void onCreate(Bundle savedInstanceState) {
                   super.onCreate(savedInstanceState);
-
                   WebView web = new WebView(this);
                   WebSettings settings = web.getSettings();
                   settings.setJavaScriptEnabled(true);
@@ -130,14 +136,20 @@ jobs:
           }
           EOF
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
       - name: Build APK
         run: |
+          set -eux
           cd Alavi
-          gradle assembleDebug
+          gradle assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Alavi-Android-APK
           path: Alavi/app/build/outputs/apk/debug/app-debug.apk
-concurrency:
+          if-no-files-found: error
