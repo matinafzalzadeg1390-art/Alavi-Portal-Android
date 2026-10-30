@@ -1,43 +1,56 @@
-name: Build APK
+
+name: Deploy Alavi Portal
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
+
 permissions:
-  contents: write
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - run: unzip -q ./*.zip
+      - name: Extract Alavi Portal
+        run: |
+          mkdir extracted
+          unzip -q Alavi-Portal-Supabase-connected.zip -d extracted
+          mkdir _site
 
-      - uses: actions/setup-java@v4
+          INDEX=$(find extracted -type f -name index.html -print -quit)
+
+          if [ -z "$INDEX" ]; then
+            echo "index.html not found in ZIP"
+            exit 1
+          fi
+
+          SITE_DIR=$(dirname "$INDEX")
+          cp -a "$SITE_DIR/." _site/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
         with:
-          distribution: temurin
-          java-version: "17"
+          path: _site
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          packages: platform-tools
-          log-accepted-android-sdk-licenses: false
-
-      - name: Accept Android licenses
-        run: yes | sdkmanager --licenses || true
-
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.7"
-
-      - run: gradle assembleDebug --no-daemon
-        working-directory: AlaviPortal
-
-      - run: cp AlaviPortal/app/build/outputs/apk/debug/app-debug.apk Alavi-Portal-Demo.apk
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          tag_name: demo
-          name: "پرتال علوی · نسخه دمو"
-          files: Alavi-Portal-Demo.apk
+      - name: Deploy site
+        id: deployment
+        uses: actions/deploy-pages@v4
