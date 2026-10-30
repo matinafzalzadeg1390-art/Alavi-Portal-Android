@@ -5,8 +5,6 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/build.yml"
 
 jobs:
   build:
@@ -22,15 +20,23 @@ jobs:
           distribution: temurin
           java-version: "17"
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | sdkmanager --licenses
+
+      - name: Install Android SDK
+        run: |
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Create Android project
+      - name: Create Android Project
         run: |
           mkdir -p Alavi/app/src/main/java/com/alavi/portal
 
@@ -83,8 +89,7 @@ jobs:
               <uses-permission android:name="android.permission.INTERNET"/>
               <application
                   android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="Alavi Portal"
-                  android:usesCleartextTraffic="false">
+                  android:label="Alavi Portal">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -118,12 +123,6 @@ jobs:
                   web.setWebViewClient(new WebViewClient());
                   web.loadUrl("https://matinafzalzadeg1390-art.github.io/Alavi-Portal-Android/");
                   setContentView(web);
-              }
-
-              @Override
-              public void onBackPressed() {
-                  WebView web = (WebView) findViewById(android.R.id.content).getRootView();
-                  super.onBackPressed();
               }
           }
           EOF
