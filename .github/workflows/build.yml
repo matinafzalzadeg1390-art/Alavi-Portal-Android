@@ -4,22 +4,17 @@ name: Build Alavi Android APK
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
-      - "Alavi Portal Presentation.zip"
-      - ".github/workflows/deploy.yml"
+      - ".github/workflows/build.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Extract ZIP
-        run: |
-          mkdir extracted
-          unzip -q "Alavi Portal Presentation.zip" -d extracted
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -27,32 +22,119 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Find or Build APK
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Create Android project
         run: |
-          mkdir -p apk
+          mkdir -p Alavi/app/src/main/java/com/alavi/portal
 
-          EXISTING_APK=$(find extracted -type f -name "*.apk" | head -n 1)
+          cat > Alavi/settings.gradle <<'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "AlaviPortal"
+          include(":app")
+          EOF
 
-          if [ -n "$EXISTING_APK" ]; then
-            cp "$EXISTING_APK" apk/Alavi-Portal.apk
-          else
-            GRADLE_FILE=$(find extracted -type f -name gradlew | head -n 1)
+          cat > Alavi/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.7.3' apply false
+          }
+          EOF
 
-            if [ -z "$GRADLE_FILE" ]; then
-              echo "No APK or Gradle project found in ZIP"
-              exit 1
-            fi
+          cat > Alavi/app/build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
 
-            PROJECT_DIR=$(dirname "$GRADLE_FILE")
-            cd "$PROJECT_DIR"
-            chmod +x gradlew
-            ./gradlew assembleDebug
+          android {
+              namespace 'com.alavi.portal'
+              compileSdk 35
 
-            find . -type f -path "*/build/outputs/apk/*/*.apk" -exec cp {} "$GITHUB_WORKSPACE/apk/Alavi-Portal.apk" \; -quit
-          fi
+              defaultConfig {
+                  applicationId 'com.alavi.portal'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
 
-      - name: Upload Android APK
+          cat > Alavi/app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <application
+                  android:theme="@android:style/Theme.Material.Light.NoActionBar"
+                  android:label="Alavi Portal"
+                  android:usesCleartextTraffic="false">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN"/>
+                          <category android:name="android.intent.category.LAUNCHER"/>
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat > Alavi/app/src/main/java/com/alavi/portal/MainActivity.java <<'EOF'
+          package com.alavi.portal;
+
+          import android.app.Activity;
+          import android.os.Bundle;
+          import android.webkit.WebView;
+          import android.webkit.WebViewClient;
+          import android.webkit.WebSettings;
+
+          public class MainActivity extends Activity {
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  WebView web = new WebView(this);
+                  WebSettings settings = web.getSettings();
+                  settings.setJavaScriptEnabled(true);
+                  settings.setDomStorageEnabled(true);
+                  web.setWebViewClient(new WebViewClient());
+                  web.loadUrl("https://matinafzalzadeg1390-art.github.io/Alavi-Portal-Android/");
+                  setContentView(web);
+              }
+
+              @Override
+              public void onBackPressed() {
+                  WebView web = (WebView) findViewById(android.R.id.content).getRootView();
+                  super.onBackPressed();
+              }
+          }
+          EOF
+
+      - name: Build APK
+        run: |
+          cd Alavi
+          gradle assembleDebug
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: Alavi-Portal-Android
-          path: apk/*.apk
+          name: Alavi-Android-APK
+          path: Alavi/app/build/outputs/apk/debug/app-debug.apk
