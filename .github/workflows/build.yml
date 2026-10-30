@@ -10,6 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,16 +23,16 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept Android SDK Licenses
+      - name: Accept Android Licenses
         run: |
-          yes | sdkmanager --licenses
+          yes | $ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager --licenses || true
 
-      - name: Install Android SDK
+      - name: Install Android SDK Packages
         run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          $ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -137,3 +140,4 @@ jobs:
         with:
           name: Alavi-Android-APK
           path: Alavi/app/build/outputs/apk/debug/app-debug.apk
+concurrency:
